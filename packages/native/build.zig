@@ -26,6 +26,7 @@ const SUPPORTED_TARGETS = [_]SupportedTarget{
     .{ .zig_target = "x86_64-macos.13.0", .output_name = "x86_64-macos", .description = "macOS x86_64 (Intel)" },
     .{ .zig_target = "aarch64-macos.13.0", .output_name = "aarch64-macos", .description = "macOS aarch64 (Apple Silicon)" },
     .{ .zig_target = "x86_64-windows-gnu", .output_name = "x86_64-windows", .description = "Windows x86_64" },
+    .{ .zig_target = "x86-windows-gnu", .output_name = "x86-windows", .description = "Windows x86 (32-bit)" },
     .{ .zig_target = "aarch64-windows-gnu", .output_name = "aarch64-windows", .description = "Windows aarch64" },
 };
 
@@ -238,8 +239,12 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
         .macos => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern", "-isysroot", macos_sdk_path.? },
         else => &.{ "-std=c99", "-fvisibility=hidden", "-DWEBP_EXTERN=extern" },
     };
+    // 32-bit x86 also ships the SSE2 dispatch (the win9x target is pentium4 /
+    // SSE2-capable), but needs -msse2 since SSE2 is not the 32-bit baseline.
     const webp_dispatch_flags = if (target.result.cpu.arch == .x86_64)
         appendCFlags(b, webp_flags, &.{ "-DWEBP_HAVE_SSE2", "-DWEBP_HAVE_SSE41", "-DWEBP_HAVE_AVX2" })
+    else if (target.result.cpu.arch == .x86)
+        appendCFlags(b, webp_flags, &.{ "-msse2", "-DWEBP_HAVE_SSE2" })
     else
         webp_flags;
     module.addIncludePath(b.path("src/vendor/libwebp"));
@@ -284,7 +289,7 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
     });
 
     switch (target.result.cpu.arch) {
-        .x86_64 => {
+        .x86_64, .x86 => {
             module.addCSourceFiles(.{
                 .root = b.path("src/vendor/libwebp"),
                 .files = &.{
@@ -296,11 +301,18 @@ fn addImageShim(b: *std.Build, module: *std.Build.Module, target: std.Build.Reso
                     "src/dsp/upsampling_sse2.c",
                     "src/dsp/yuv_sse2.c",
                 },
-                .flags = webp_flags,
+                // 32-bit x86 needs -msse2 (SSE2 is not the i386 baseline).
+                .flags = if (target.result.cpu.arch == .x86)
+                    appendCFlags(b, webp_flags, &.{"-msse2"})
+                else
+                    webp_flags,
             });
             module.addCSourceFile(.{
                 .file = b.path("src/image-webp-sse41.c"),
-                .flags = webp_flags,
+                .flags = if (target.result.cpu.arch == .x86)
+                    appendCFlags(b, webp_flags, &.{ "-msse2", "-msse4.1" })
+                else
+                    webp_flags,
             });
             module.addCSourceFile(.{
                 .file = b.path("src/image-webp-avx2.c"),

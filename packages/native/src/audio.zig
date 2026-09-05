@@ -146,9 +146,12 @@ pub const CaptureBuffer = struct {
     sample_rate: u32,
     channels: u32,
     capacity_frames: u32,
-    frames_received: u64 = 0,
-    frames_read: u64 = 0,
-    frames_dropped: u64 = 0,
+    // 32-bit targets (win9x/i586) have no u64 atomics, so these counters are
+    // u32 atomics that wrap at ~4.3 billion frames/bytes (infeasible for a
+    // session) and are widened to the u64 extern-struct field on read.
+    frames_received: u32 = 0,
+    frames_read: u32 = 0,
+    frames_dropped: u32 = 0,
 
     pub fn create(
         allocator: std.mem.Allocator,
@@ -186,7 +189,7 @@ pub const CaptureBuffer = struct {
     // This is the sole producer path. It never waits for space and drops the newest frames on overflow.
     pub fn write(self: *CaptureBuffer, input: [*]const f32, frame_count: u32) void {
         if (frame_count == 0) return;
-        _ = @atomicRmw(u64, &self.frames_received, .Add, frame_count, .monotonic);
+        _ = @atomicRmw(u32, &self.frames_received, .Add, frame_count, .monotonic);
 
         const frames_to_write = @min(frame_count, c.ma_pcm_rb_available_write(&self.ring));
         var total_written: u32 = 0;
@@ -210,7 +213,7 @@ pub const CaptureBuffer = struct {
 
         const dropped = frame_count - total_written;
         if (dropped > 0) {
-            _ = @atomicRmw(u64, &self.frames_dropped, .Add, dropped, .monotonic);
+            _ = @atomicRmw(u32, &self.frames_dropped, .Add, dropped, .monotonic);
         }
     }
 
@@ -237,16 +240,16 @@ pub const CaptureBuffer = struct {
         }
 
         if (total_read > 0) {
-            _ = @atomicRmw(u64, &self.frames_read, .Add, total_read, .monotonic);
+            _ = @atomicRmw(u32, &self.frames_read, .Add, total_read, .monotonic);
         }
         return total_read;
     }
 
     pub fn snapshot(self: *CaptureBuffer) CaptureStats {
         return .{
-            .frames_received = @atomicLoad(u64, &self.frames_received, .monotonic),
-            .frames_read = @atomicLoad(u64, &self.frames_read, .monotonic),
-            .frames_dropped = @atomicLoad(u64, &self.frames_dropped, .monotonic),
+            .frames_received = @as(u64, @atomicLoad(u32, &self.frames_received, .monotonic)),
+            .frames_read = @as(u64, @atomicLoad(u32, &self.frames_read, .monotonic)),
+            .frames_dropped = @as(u64, @atomicLoad(u32, &self.frames_dropped, .monotonic)),
             .sample_rate = self.sample_rate,
             .channels = self.channels,
             .buffered_frames = c.ma_pcm_rb_available_read(&self.ring),
@@ -315,9 +318,11 @@ const Stream = struct {
     sample_rate: u32,
     capacity_frames: u32,
     state: u32 = StreamState.initializing,
-    bytes_received: u64 = 0,
-    frames_decoded: u64 = 0,
-    frames_played: u64 = 0,
+    // 32-bit targets have no u64 atomics; see CaptureBuffer. Widened to u64 on
+    // snapshot (bytes_received/frames_* wrap at ~4.3 billion — infeasible here).
+    bytes_received: u32 = 0,
+    frames_decoded: u32 = 0,
+    frames_played: u32 = 0,
     underruns: u32 = 0,
     error_code: i32 = 0,
     ready_generation: u32 = 0,
@@ -705,7 +710,7 @@ fn streamDataSourceRead(
     }
 
     if (total_read > 0) {
-        _ = @atomicRmw(u64, &stream.frames_played, .Add, total_read, .monotonic);
+        _ = @atomicRmw(u32, &stream.frames_played, .Add, total_read, .monotonic);
     }
 
     available = c.ma_pcm_rb_available_read(&stream.pcm_ring);
@@ -959,7 +964,7 @@ fn streamDecoderWorker(stream: *Stream) void {
                 failDecoderWorker(stream);
                 return;
             }
-            _ = @atomicRmw(u64, &stream.frames_decoded, .Add, decoded_frames, .monotonic);
+            _ = @atomicRmw(u32, &stream.frames_decoded, .Add, decoded_frames, .monotonic);
         }
 
         if (decoderExitRequested(stream)) return;
@@ -1910,7 +1915,7 @@ pub fn writeStream(
 
     stream.input_write = (stream.input_write + write_count) % stream.input_buffer.len;
     stream.input_count += write_count;
-    _ = @atomicRmw(u64, &stream.bytes_received, .Add, write_count, .monotonic);
+    _ = @atomicRmw(u32, &stream.bytes_received, .Add, write_count, .monotonic);
     stream.input_condition.signal(io);
     return @intCast(write_count);
 }
@@ -2042,9 +2047,9 @@ pub fn setStreamGroup(engine: *Engine, stream_id: u32, group_id: u32) i32 {
 
 fn snapshotStream(stream: *Stream, final: bool) StreamStats {
     return .{
-        .bytes_received = @atomicLoad(u64, &stream.bytes_received, .monotonic),
-        .frames_decoded = @atomicLoad(u64, &stream.frames_decoded, .monotonic),
-        .frames_played = @atomicLoad(u64, &stream.frames_played, .monotonic),
+.bytes_received = @as(u64, @atomicLoad(u32, &stream.bytes_received, .monotonic)),
+    .frames_decoded = @as(u64, @atomicLoad(u32, &stream.frames_decoded, .monotonic)),
+    .frames_played = @as(u64, @atomicLoad(u32, &stream.frames_played, .monotonic)),
         .state = loadStreamState(stream),
         .sample_rate = stream.sample_rate,
         .channels = 2,
