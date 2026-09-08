@@ -1,6 +1,6 @@
 export type NodeAssetTarget = {
   readonly platform: "darwin" | "linux" | "win32"
-  readonly arch: "arm64" | "x64"
+  readonly arch: "arm64" | "x64" | "x86"
   readonly libc?: "glibc" | "musl"
 }
 
@@ -17,7 +17,7 @@ const NATIVE_FILE_NAMES = {
 } as const
 
 export function getNativeAssetDescriptor(target: NodeAssetTarget): NativeAssetDescriptor {
-  if (!Object.hasOwn(NATIVE_FILE_NAMES, target.platform) || (target.arch !== "arm64" && target.arch !== "x64")) {
+  if (!Object.hasOwn(NATIVE_FILE_NAMES, target.platform) || (target.arch !== "arm64" && target.arch !== "x64" && target.arch !== "x86")) {
     throw new Error(`Unsupported OpenTUI Node asset target: ${String(target.platform)}-${String(target.arch)}`)
   }
 

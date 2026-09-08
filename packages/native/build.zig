@@ -756,6 +756,10 @@ fn buildTarget(
         .root_module = module,
         .linkage = .dynamic,
     });
+    // On 32-bit x86 the C code (yoga/libwebp/...) emits __fixdfdi (double→i64)
+    // libcalls that must resolve from Zig's compiler-rt, or the DLL fails to
+    // load with "unresolved reference to '__fixdfdi'". Force bundling.
+    lib.bundle_compiler_rt = true;
 
     if (target.result.os.tag == .linux and optimize != .Debug) lib.build_id = .sha1;
 

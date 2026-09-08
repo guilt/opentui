@@ -69,6 +69,11 @@ export async function resolveNativeLibraryPath(): Promise<string> {
   }
 
   if (process.platform === "win32") {
+    // bun/i586 reports process.arch as "x86", which isn't in Node's Architecture
+    // union ("ia32" is), so the comparison needs a string cast.
+    if ((process.arch as string) === "x86") {
+      return ((await import("@opentui/core-win32-x86" as string)) as NativePackageModule).default
+    }
     if (process.arch === "x64") {
       return ((await import("@opentui/core-win32-x64" as string)) as NativePackageModule).default
     }
