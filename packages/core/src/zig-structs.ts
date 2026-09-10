@@ -20,7 +20,7 @@ type StyledChunkInput = {
 export const StyledChunkStruct = defineStruct(
   [
     ["text", "char*"],
-    ["text_len", "u64", { lengthOf: "text" }],
+    ["text_len", "pointer", { lengthOf: "text" }],
     [
       "fg",
       "pointer",
@@ -41,7 +41,7 @@ export const StyledChunkStruct = defineStruct(
     ],
     ["attributes", "u32", { default: 0 }],
     ["link", "char*", { default: "" }],
-    ["link_len", "u64", { lengthOf: "link" }],
+    ["link_len", "pointer", { lengthOf: "link" }],
   ],
   {
     mapValue: (chunk: StyledChunkInput): StyledChunkInput => {
@@ -115,9 +115,9 @@ export const TerminalCapabilitiesStruct = defineStruct([
   ["multiplexer", TerminalMultiplexerEnum],
   ["image_protocol", ImageProtocolEnum],
   ["term_name", "char*"],
-  ["term_name_len", "u64", { lengthOf: "term_name" }],
+  ["term_name_len", "pointer", { lengthOf: "term_name" }],
   ["term_version", "char*"],
-  ["term_version_len", "u64", { lengthOf: "term_version" }],
+  ["term_version_len", "pointer", { lengthOf: "term_version" }],
   ["term_from_xtversion", "bool_u8"],
   ["osc52_support", Osc52SupportEnum],
 ])
