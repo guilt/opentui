@@ -939,11 +939,11 @@ fn streamDecoderWorker(stream: *Stream) void {
             const input = if (input_frames != 0) samples[input_offset / @sizeOf(f32) ..].ptr else null;
             if (input == null) {
                 const input_rate = stream.input_sample_rate;
-                const received_frames = @atomicLoad(u64, &stream.bytes_received, .monotonic) / frame_bytes;
+                const received_frames = @as(u64, @atomicLoad(u32, &stream.bytes_received, .monotonic)) / frame_bytes;
                 // Round input latency separately to preserve sub-frame downsampling tails.
                 const tail = (@as(u128, c.ma_data_converter_get_input_latency(&converter)) * stream.sample_rate + input_rate - 1) / input_rate;
                 const target: u64 = if (received_frames == 0) 0 else @intCast((@as(u128, received_frames) * stream.sample_rate + input_rate - 1) / input_rate + tail);
-                const produced = @atomicLoad(u64, &stream.frames_decoded, .monotonic);
+                const produced = @as(u64, @atomicLoad(u32, &stream.frames_decoded, .monotonic));
                 frames_read = @min(frames_read, target -| produced);
                 if (frames_read == 0) break :blk c.MA_AT_END;
                 input_frames = stream_decoder_chunk_frames;
@@ -980,7 +980,7 @@ fn streamDecoderWorker(stream: *Stream) void {
             }
             if (@atomicLoad(u32, &stream.input_ended, .acquire) != 0) {
                 @atomicStore(u32, &stream.decoder_finished, 1, .release);
-                if (is_pcm and @atomicLoad(u64, &stream.frames_decoded, .monotonic) == 0) endStreamPlayback(stream);
+                if (is_pcm and @atomicLoad(u32, &stream.frames_decoded, .monotonic) == 0) endStreamPlayback(stream);
                 stream.input_lock.unlock(io);
                 return;
             }
