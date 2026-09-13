@@ -1,0 +1,143 @@
+// Windows XP compatibility stubs for opentui.dll (x86-windows-gnu build).
+//
+// The DLL (via Zig std + UCRT runtime) imports several Vista+/Win8+ kernel32
+// and ntdll entry points that do not exist on Windows XP (SRW locks,
+// condition variables, Fiber Local Storage, one-time init, NtAlertThread /
+// NtCreateThreadEx / LdrRegisterDllNotification, ...), so the DLL would fail
+// to load there.
+//
+// Each Vista+ entry point `Foo` is stubbed here under a private name
+// `win9x_Foo` (never conflicts with the import library), and win9x_imports.asm
+// defines the corresponding `__imp__Foo@N` DATA symbol pointing at the stub.
+// An object definition of `__imp_` beats the import library, so references
+// resolve to the stub and no IAT entry is created — the loader never looks the
+// function up in kernel32.dll/ntdll.dll on XP.
+//
+// Concurrency semantics are relaxed (SRW shared locks degrade to exclusive,
+// condition variables wake on timeout) which is correct enough for the
+// audio/render threads and avoids load failure.
+//
+// The UCRT (api-ms-win-crt-*.dll) imports are NOT handled here — they are
+// satisfied at runtime by the UCRT-for-XP shim DLLs shipped alongside the
+// opencode binary.
+//
+// NOTE: this file deliberately does NOT include <windows.h> — the modern
+// headers declare these Vista+ functions, which would conflict. Only the
+// kernel32 functions actually used are declared.
+
+#include <stdint.h>
+#include <stddef.h>
+
+typedef long LONG;
+typedef unsigned long DWORD;
+typedef unsigned long ULONG;
+typedef int BOOL;
+
+typedef struct _FILETIME { DWORD dwLowDateTime; DWORD dwHighDateTime; } FILETIME;
+
+#define WINAPI __stdcall
+#define WINBASEAPI __declspec(dllimport)
+
+WINBASEAPI LONG WINAPI InterlockedCompareExchange(LONG volatile*, LONG, LONG);
+WINBASEAPI LONG WINAPI InterlockedExchange(LONG volatile*, LONG);
+WINBASEAPI void WINAPI SwitchToThread(void);
+WINBASEAPI DWORD WINAPI TlsAlloc(void);
+WINBASEAPI void* WINAPI TlsGetValue(DWORD);
+WINBASEAPI BOOL WINAPI TlsSetValue(DWORD, void*);
+WINBASEAPI void WINAPI Sleep(DWORD);
+WINBASEAPI void WINAPI GetSystemTimeAsFileTime(FILETIME*);
+WINBASEAPI DWORD WINAPI GetCurrentThreadId(void);
+
+// --- Vista+ kernel32 stubs ---
+
+// SRW locks degrade to a 4-byte spinlock (fits the x86 SRWLOCK footprint).
+// Shared acquire is treated as exclusive (no concurrent readers).
+static void spin_lock(LONG volatile* p) {
+    while (InterlockedCompareExchange(p, 1, 0) != 0) {
+        SwitchToThread();
+    }
+}
+
+void WINAPI win9x_AcquireSRWLockExclusive(void* srwl) { spin_lock((LONG volatile*)srwl); }
+void WINAPI win9x_ReleaseSRWLockExclusive(void* srwl) { InterlockedExchange((LONG volatile*)srwl, 0); }
+void WINAPI win9x_AcquireSRWLockShared(void* srwl) { spin_lock((LONG volatile*)srwl); }
+void WINAPI win9x_ReleaseSRWLockShared(void* srwl) { InterlockedExchange((LONG volatile*)srwl, 0); }
+BOOL WINAPI win9x_TryAcquireSRWLockExclusive(void* srwl) { return InterlockedCompareExchange((LONG volatile*)srwl, 1, 0) == 0; }
+
+// Condition variables: release the (spin)lock, sleep, reacquire. Wakes are
+// no-ops; waiters wake on timeout.
+BOOL WINAPI win9x_SleepConditionVariableSRW(void* cv, void* srwl, DWORD ms, ULONG flags) {
+    (void)cv;
+    (void)flags;
+    InterlockedExchange((LONG volatile*)srwl, 0);
+    Sleep(ms);
+    spin_lock((LONG volatile*)srwl);
+    return 1;
+}
+void WINAPI win9x_WakeConditionVariable(void* cv) { (void)cv; }
+void WINAPI win9x_WakeAllConditionVariable(void* cv) { (void)cv; }
+
+// Fiber Local Storage -> thread-local storage (ignores the alloc callback).
+DWORD WINAPI win9x_FlsAlloc(void* callback) {
+    (void)callback;
+    return TlsAlloc();
+}
+void* WINAPI win9x_FlsGetValue(DWORD index) { return TlsGetValue(index); }
+BOOL WINAPI win9x_FlsSetValue(DWORD index, void* value) { return TlsSetValue(index, value); }
+
+// One-time init -> spinlock flag.
+typedef void (*WINAPI PINIT_ONCE_FN)(void* param, void* context, void** out);
+BOOL WINAPI win9x_InitOnceExecuteOnce(LONG volatile* init_once, PINIT_ONCE_FN fn, void* param, void** context) {
+    spin_lock(init_once);
+    if (*init_once == 2) {
+        InterlockedExchange(init_once, 0);
+        return 1;
+    }
+    void* ctx = 0;
+    fn(param, 0, &ctx);
+    if (context) *context = ctx;
+    InterlockedExchange(init_once, 2);
+    InterlockedExchange(init_once, 0);
+    return 1;
+}
+
+// High-resolution time -> plain file time (XP has no precise variant).
+void WINAPI win9x_GetSystemTimePreciseAsFileTime(FILETIME* out) { GetSystemTimeAsFileTime(out); }
+
+// GetThreadId for the current thread (the common case).
+DWORD WINAPI win9x_GetThreadId(void* thread) { (void)thread; return GetCurrentThreadId(); }
+
+// Process module enumeration (debugging only) -> unsupported on XP.
+BOOL WINAPI win9x_K32EnumProcessModules(void* proc, void* modules, DWORD cb, DWORD* needed) {
+    (void)proc; (void)modules; (void)cb;
+    if (needed) *needed = 0;
+    return 0;
+}
+
+// --- Vista+ ntdll stubs (NTSTATUS) ---
+
+typedef long NTSTATUS;
+#define STATUS_SUCCESS ((NTSTATUS)0)
+#define STATUS_NOT_IMPLEMENTED ((NTSTATUS)0xC0000002L)
+
+NTSTATUS WINAPI win9x_NtAlertThread(void* thread) { (void)thread; return STATUS_SUCCESS; }
+NTSTATUS WINAPI win9x_NtAlertThreadByThreadId(void* id) { (void)id; return STATUS_SUCCESS; }
+NTSTATUS WINAPI win9x_NtWaitForAlertByThreadId(void* id, void* alertable) { (void)id; (void)alertable; Sleep(1); return STATUS_SUCCESS; }
+NTSTATUS WINAPI win9x_NtCancelIoFileEx(void* file, void* io, void* status) { (void)file; (void)io; (void)status; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS WINAPI win9x_NtCancelSynchronousIoFile(void* thread, void* io, void* status) { (void)thread; (void)io; (void)status; return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS WINAPI win9x_NtCreateNamedPipeFile(void* a, void* b, void* c, void* d, void* e, void* f, void* g, void* h, void* i, void* j, void* k, void* l, void* m, void* n) { return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS WINAPI win9x_NtCreateThreadEx(void* a, void* b, void* c, void* d, void* e, void* f, void* g, void* h, void* i, void* j, void* k) { return STATUS_NOT_IMPLEMENTED; }
+NTSTATUS WINAPI win9x_LdrRegisterDllNotification(void* a, void* b, void* c, void* d) { return STATUS_NOT_IMPLEMENTED; }
+typedef union _LARGE_INTEGER_ { struct { DWORD LowPart; LONG HighPart; }; long long QuadPart; } LARGE_INTEGER;
+
+// Zig std declares RtlGetSystemTimePrecise() with zero arguments returning the
+// 100ns FILETIME-style counter.
+LARGE_INTEGER WINAPI win9x_RtlGetSystemTimePrecise(void) {
+    FILETIME ft;
+    LARGE_INTEGER li;
+    GetSystemTimeAsFileTime(&ft);
+    li.LowPart = ft.dwLowDateTime;
+    li.HighPart = ft.dwHighDateTime;
+    return li;
+}
+void WINAPI win9x_RtlReportSilentProcessExit(void* a, long b) { (void)a; (void)b; }

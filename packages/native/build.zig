@@ -751,6 +751,16 @@ fn buildTarget(
 
     applyDependencies(b, module, optimize, target, build_options);
 
+    // Windows XP compatibility for the 32-bit x86 build: provide local
+    // definitions of the Vista+ kernel32/ntdll entry points (see
+    // src/win9x_compat.c + lib/win9x_imports.obj) so the loader never imports
+    // them. The UCRT (api-ms-win-crt-*.dll) imports are satisfied at runtime
+    // by the UCRT-for-XP shim DLLs shipped alongside the opencode binary.
+    if (target.result.cpu.arch == .x86 and target.result.os.tag == .windows) {
+        module.addCSourceFile(.{ .file = b.path("src/win9x_compat.c"), .flags = &.{} });
+        module.addObjectFile(b.path("lib/win9x_imports.obj"));
+    }
+
     const lib = b.addLibrary(.{
         .name = LIB_NAME,
         .root_module = module,
