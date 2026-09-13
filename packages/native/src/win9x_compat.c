@@ -8,16 +8,17 @@
 //
 // Each Vista+ entry point `Foo` is stubbed here under a private name
 // `win9x_Foo` (never conflicts with the import library), and win9x_imports.asm
-// defines the corresponding `__imp__Foo@N` DATA symbol pointing at the stub.
-// An object definition of `__imp_` beats the import library, so references
-// resolve to the stub and no IAT entry is created — the loader never looks the
-// function up in kernel32.dll/ntdll.dll on XP.
+// defines the corresponding `__imp__Foo@N` DATA symbol + `_Foo@N` code thunk
+// pointing at the stub. An object definition of `__imp_` beats the import
+// library, so references resolve to the stub and no IAT entry is created —
+// the loader never looks the function up in kernel32.dll/ntdll.dll on XP.
 //
 // Concurrency semantics are relaxed (SRW shared locks degrade to exclusive,
 // condition variables wake on timeout) which is correct enough for the
 // audio/render threads and avoids load failure.
 //
-// The UCRT (api-ms-win-crt-*.dll) imports are NOT handled here — they are
+// The UCRT (api-ms-win-crt-*.dll) imports are NOT handled here — the build
+// links libc++ (yoga) so Zig always links the UCRT; those imports are
 // satisfied at runtime by the UCRT-for-XP shim DLLs shipped alongside the
 // opencode binary.
 //
@@ -128,6 +129,7 @@ NTSTATUS WINAPI win9x_NtCancelSynchronousIoFile(void* thread, void* io, void* st
 NTSTATUS WINAPI win9x_NtCreateNamedPipeFile(void* a, void* b, void* c, void* d, void* e, void* f, void* g, void* h, void* i, void* j, void* k, void* l, void* m, void* n) { return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS WINAPI win9x_NtCreateThreadEx(void* a, void* b, void* c, void* d, void* e, void* f, void* g, void* h, void* i, void* j, void* k) { return STATUS_NOT_IMPLEMENTED; }
 NTSTATUS WINAPI win9x_LdrRegisterDllNotification(void* a, void* b, void* c, void* d) { return STATUS_NOT_IMPLEMENTED; }
+
 typedef union _LARGE_INTEGER_ { struct { DWORD LowPart; LONG HighPart; }; long long QuadPart; } LARGE_INTEGER;
 
 // Zig std declares RtlGetSystemTimePrecise() with zero arguments returning the

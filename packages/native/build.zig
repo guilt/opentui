@@ -754,8 +754,10 @@ fn buildTarget(
     // Windows XP compatibility for the 32-bit x86 build: provide local
     // definitions of the Vista+ kernel32/ntdll entry points (see
     // src/win9x_compat.c + src/win9x_imports.asm) so the loader never imports
-    // them. The UCRT (api-ms-win-crt-*.dll) imports are satisfied at runtime
-    // by the UCRT-for-XP shim DLLs shipped alongside the opencode binary.
+    // them. The UCRT (api-ms-win-crt-*.dll) imports cannot be removed because
+    // the build links libc++ (yoga), and Zig always links the UCRT with
+    // libc++; they are satisfied at runtime by the UCRT-for-XP shim DLLs
+    // shipped alongside the opencode binary.
     if (target.result.cpu.arch == .x86 and target.result.os.tag == .windows) {
         module.addCSourceFile(.{ .file = b.path("src/win9x_compat.c"), .flags = &.{} });
         // Assemble the __imp_ redirects with NASM (same tool the Bun win9x
