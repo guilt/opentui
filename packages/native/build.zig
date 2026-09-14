@@ -761,7 +761,9 @@ fn buildTarget(
     if (target.result.cpu.arch == .x86 and target.result.os.tag == .windows) {
         module.addCSourceFile(.{ .file = b.path("src/win9x_compat.c"), .flags = &.{} });
         // Remap the UCRT (api-ms-win-crt-*) imports that have msvcrt.dll
-        // equivalents to msvcrt (present on XP) instead of the UCRT.
+        // equivalents to msvcrt (present on XP) instead of the UCRT, via the
+        // msvcrt import library generated from src/ucrt_msvcrt.def:
+        //   lib.exe /def:src/ucrt_msvcrt.def /machine:x86 /out:lib/ucrt_msvcrt.lib
         module.addObjectFile(b.path("lib/ucrt_msvcrt.lib"));
         // Assemble the __imp_ redirects with NASM (same tool the Bun win9x
         // build uses). Requires nasm on PATH.
