@@ -1,0 +1,60 @@
+; UCRT-for-XP import remap: maps the api-ms-win-crt-* functions that have
+; msvcrt.dll equivalents onto msvcrt.dll (present on Windows XP). The
+; resulting import library (ucrt_msvcrt.lib) is linked into the x86-windows
+; build so those imports come from msvcrt instead of api-ms-win-crt-*.dll.
+;
+; Generate with (x86):
+;   lib.exe /def:ucrt_msvcrt.def /machine:x86 /out:ucrt_msvcrt.lib
+; and place ucrt_msvcrt.lib in packages/native/lib/ (gitignored).
+;
+; NOTE: _close and the onexit/init routines are intentionally absent — _close
+; is handled by the __imp_ redirect in win9x_imports.asm, and the onexit/init
+; routines are provided by the local stubs in win9x_compat.c.
+LIBRARY msvcrt.dll
+EXPORTS
+  _aligned_free
+  _aligned_malloc
+  _beginthreadex
+  _ctime64
+  _errno
+  _exit
+  _gmtime64
+  _iob
+  _stricmp
+  _time64
+  abort
+  atan
+  atan2
+  atoi
+  calloc
+  fclose
+  feof
+  fflush
+  fgetc
+  fopen
+  fputc
+  fread
+  free
+  fseek
+  ftell
+  fwrite
+  isalnum
+  isalpha
+  isxdigit
+  malloc
+  memchr
+  pow
+  qsort
+  realloc
+  remove
+  strcat
+  strchr
+  strcmp
+  strcpy
+  strncmp
+  strncpy
+  strrchr
+  strspn
+  toupper
+  wcslen
+  wcsrtombs

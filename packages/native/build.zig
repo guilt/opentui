@@ -760,6 +760,9 @@ fn buildTarget(
     // shipped alongside the opencode binary.
     if (target.result.cpu.arch == .x86 and target.result.os.tag == .windows) {
         module.addCSourceFile(.{ .file = b.path("src/win9x_compat.c"), .flags = &.{} });
+        // Remap the UCRT (api-ms-win-crt-*) imports that have msvcrt.dll
+        // equivalents to msvcrt (present on XP) instead of the UCRT.
+        module.addObjectFile(b.path("lib/ucrt_msvcrt.lib"));
         // Assemble the __imp_ redirects with NASM (same tool the Bun win9x
         // build uses). Requires nasm on PATH.
         const asm_step = b.addSystemCommand(&.{"nasm"});

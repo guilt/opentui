@@ -35,6 +35,16 @@ extern _win9x_NtCreateThreadEx@44
 extern _win9x_LdrRegisterDllNotification@16
 extern _win9x_RtlGetSystemTimePrecise@0
 extern _win9x_RtlReportSilentProcessExit@8
+extern _win9x_acrt_iob_func
+extern _win9x_stdio_common_vfprintf
+extern _win9x_stdio_common_vsprintf
+extern _win9x_stdio_common_vsscanf
+extern _win9x_close
+extern _win9x_initialize_onexit_table
+extern _win9x_register_onexit_function
+extern _win9x_execute_onexit_table
+extern _win9x_initterm
+extern _win9x_initterm_e
 
 section .data
 
@@ -145,3 +155,16 @@ global _RtlGetSystemTimePrecise@0
 _RtlGetSystemTimePrecise@0: jmp _win9x_RtlGetSystemTimePrecise@0
 global _RtlReportSilentProcessExit@8
 _RtlReportSilentProcessExit@8: jmp _win9x_RtlReportSilentProcessExit@8
+
+; UCRT-internal functions (stdio routing + onexit/init) that have no msvcrt.dll
+; equivalent: redirect to the local stubs in win9x_compat.c.
+
+section .data
+global __imp___acrt_iob_func
+__imp___acrt_iob_func: dd _win9x_acrt_iob_func
+global __imp___stdio_common_vfprintf
+__imp___stdio_common_vfprintf: dd _win9x_stdio_common_vfprintf
+global __imp___stdio_common_vsprintf
+__imp___stdio_common_vsprintf: dd _win9x_stdio_common_vsprintf
+global __imp___stdio_common_vsscanf
+__imp___stdio_common_vsscanf: dd _win9x_stdio_common_vsscanf

@@ -28,6 +28,9 @@
 
 #include <stdint.h>
 #include <stddef.h>
+#include <stdarg.h>
+
+// --- types + kernel32 declarations (must precede the shims that use them) ---
 
 typedef long LONG;
 typedef unsigned long DWORD;
@@ -48,6 +51,119 @@ WINBASEAPI BOOL WINAPI TlsSetValue(DWORD, void*);
 WINBASEAPI void WINAPI Sleep(DWORD);
 WINBASEAPI void WINAPI GetSystemTimeAsFileTime(FILETIME*);
 WINBASEAPI DWORD WINAPI GetCurrentThreadId(void);
+WINBASEAPI void* WINAPI GetProcessHeap(void);
+WINBASEAPI void* WINAPI HeapAlloc(void*, DWORD, size_t);
+WINBASEAPI BOOL WINAPI HeapFree(void*, DWORD, void*);
+
+// --- msvcrt forwards used by the UCRT-internal shims ---
+
+typedef struct _iobuf {
+    char* _ptr;
+    int _cnt;
+    char* _base;
+    int _flag;
+    int _file;
+    int _charbuf;
+    int _bufsiz;
+    char* _tmpfname;
+} FILE;
+
+extern FILE _iob[];                    // msvcrt's stdin/stdout/stderr table
+extern int vfprintf(FILE*, const char*, va_list);
+extern int vsprintf(char*, const char*, va_list);
+extern int vsscanf(const char*, const char*, va_list);
+extern int _close(int);
+extern void* memcpy(void*, const void*, size_t);
+
+// --- UCRT-internal stubs (win9x_* names; __imp_ redirects in win9x_imports.asm) ---
+
+FILE* win9x_acrt_iob_func(unsigned int index) {
+    return &_iob[index];
+}
+
+int win9x_stdio_common_vfprintf(uint64_t options, FILE* stream, const char* format, void* locale, va_list argptr) {
+    (void)options;
+    (void)locale;
+    return vfprintf(stream, format, argptr);
+}
+
+int win9x_stdio_common_vsprintf(uint64_t options, char* const buffer, size_t const buffer_count, const char* const format, void* locale, va_list argptr) {
+    (void)options;
+    (void)buffer_count;
+    (void)locale;
+    return vsprintf(buffer, format, argptr);
+}
+
+int win9x_stdio_common_vsscanf(const char* const buffer, size_t const buffer_count, const char* const format, void* locale, va_list argptr) {
+    (void)buffer_count;
+    (void)locale;
+    return vsscanf(buffer, format, argptr);
+}
+
+int win9x_close(int fd) { return _close(fd); }
+
+// One-time-init / C++ static-init tables (UCRT layout).
+typedef void(__cdecl* _PVFV)(void);
+typedef int(__cdecl* _PIFV)(void);
+
+typedef struct {
+    _PVFV* _first;
+    _PVFV* _last;
+    _PVFV* _end;
+} _onexit_table_t;
+
+void win9x_initialize_onexit_table(_onexit_table_t* table) {
+    table->_first = 0;
+    table->_last = 0;
+    table->_end = 0;
+}
+
+int win9x_register_onexit_function(_onexit_table_t* table, _PVFV function) {
+    size_t used = (size_t)(table->_last - table->_first);
+    size_t cap = (size_t)(table->_end - table->_first);
+    if (used + 1 > cap) {
+        size_t new_cap = cap == 0 ? 16 : cap * 2;
+        _PVFV* nb = (_PVFV*)HeapAlloc(GetProcessHeap(), 0, new_cap * sizeof(_PVFV));
+        if (!nb) return -1;
+        if (used) {
+            memcpy(nb, table->_first, used * sizeof(_PVFV));
+            HeapFree(GetProcessHeap(), 0, table->_first);
+        }
+        table->_first = nb;
+        table->_last = nb + used;
+        table->_end = nb + new_cap;
+    }
+    *table->_last++ = function;
+    return 0;
+}
+
+int win9x_execute_onexit_table(_onexit_table_t* table) {
+    while (table->_last > table->_first) {
+        _PVFV fn = *--table->_last;
+        if (fn) fn();
+    }
+    if (table->_first) HeapFree(GetProcessHeap(), 0, table->_first);
+    table->_first = table->_last = table->_end = 0;
+    return 0;
+}
+
+void win9x_initterm(_PVFV* first, _PVFV* last) {
+    while (first < last) {
+        _PVFV fn = *first++;
+        if (fn) fn();
+    }
+}
+
+int win9x_initterm_e(_PIFV* first, _PIFV* last) {
+    while (first < last) {
+        _PIFV fn = *first++;
+        if (fn) {
+            int result = fn();
+            if (result != 0) return result;
+        }
+    }
+    return 0;
+}
 
 // --- Vista+ kernel32 stubs ---
 
