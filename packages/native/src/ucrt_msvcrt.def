@@ -7,6 +7,7 @@ EXPORTS
   _errno
   _exit
   _gmtime64
+  _iob
   _stricmp
   _time64
   abort
@@ -44,4 +45,3 @@ EXPORTS
   strspn
   toupper
   wcslen
-  wcsrtombs

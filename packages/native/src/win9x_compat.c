@@ -259,3 +259,20 @@ LARGE_INTEGER WINAPI win9x_RtlGetSystemTimePrecise(void) {
     return li;
 }
 void WINAPI win9x_RtlReportSilentProcessExit(void* a, long b) { (void)a; (void)b; }
+
+// Zig std imports RtlExitUserProcess / RtlQueryPerformanceCounter /
+// RtlQueryPerformanceFrequency from ntdll, but they are Vista+ exports
+// (absent from XP's ntdll). Polyfill on top of the kernel32 equivalents.
+WINBASEAPI void WINAPI ExitProcess(unsigned);
+WINBASEAPI int WINAPI QueryPerformanceCounter(LARGE_INTEGER*);
+WINBASEAPI int WINAPI QueryPerformanceFrequency(LARGE_INTEGER*);
+
+void WINAPI win9x_RtlExitUserProcess(unsigned exit_code) {
+    ExitProcess(exit_code);
+}
+NTSTATUS WINAPI win9x_RtlQueryPerformanceCounter(LARGE_INTEGER* lp) {
+    return QueryPerformanceCounter(lp) ? STATUS_SUCCESS : 0xC0000001L;
+}
+NTSTATUS WINAPI win9x_RtlQueryPerformanceFrequency(LARGE_INTEGER* lp) {
+    return QueryPerformanceFrequency(lp) ? STATUS_SUCCESS : 0xC0000001L;
+}

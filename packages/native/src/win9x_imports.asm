@@ -35,6 +35,9 @@ extern _win9x_NtCreateThreadEx@44
 extern _win9x_LdrRegisterDllNotification@16
 extern _win9x_RtlGetSystemTimePrecise@0
 extern _win9x_RtlReportSilentProcessExit@8
+extern _win9x_RtlExitUserProcess@4
+extern _win9x_RtlQueryPerformanceCounter@4
+extern _win9x_RtlQueryPerformanceFrequency@4
 extern _win9x_acrt_iob_func
 extern _win9x_stdio_common_vfprintf
 extern _win9x_stdio_common_vsprintf
@@ -98,6 +101,12 @@ global __imp__RtlGetSystemTimePrecise@0
 __imp__RtlGetSystemTimePrecise@0: dd _win9x_RtlGetSystemTimePrecise@0
 global __imp__RtlReportSilentProcessExit@8
 __imp__RtlReportSilentProcessExit@8: dd _win9x_RtlReportSilentProcessExit@8
+global __imp__RtlExitUserProcess@4
+__imp__RtlExitUserProcess@4: dd _win9x_RtlExitUserProcess@4
+global __imp__RtlQueryPerformanceCounter@4
+__imp__RtlQueryPerformanceCounter@4: dd _win9x_RtlQueryPerformanceCounter@4
+global __imp__RtlQueryPerformanceFrequency@4
+__imp__RtlQueryPerformanceFrequency@4: dd _win9x_RtlQueryPerformanceFrequency@4
 
 section .text
 
@@ -155,6 +164,12 @@ global _RtlGetSystemTimePrecise@0
 _RtlGetSystemTimePrecise@0: jmp _win9x_RtlGetSystemTimePrecise@0
 global _RtlReportSilentProcessExit@8
 _RtlReportSilentProcessExit@8: jmp _win9x_RtlReportSilentProcessExit@8
+global _RtlExitUserProcess@4
+_RtlExitUserProcess@4: jmp _win9x_RtlExitUserProcess@4
+global _RtlQueryPerformanceCounter@4
+_RtlQueryPerformanceCounter@4: jmp _win9x_RtlQueryPerformanceCounter@4
+global _RtlQueryPerformanceFrequency@4
+_RtlQueryPerformanceFrequency@4: jmp _win9x_RtlQueryPerformanceFrequency@4
 
 ; UCRT-internal functions (stdio routing + onexit/init) that have no msvcrt.dll
 ; equivalent: redirect to the local stubs in win9x_compat.c.

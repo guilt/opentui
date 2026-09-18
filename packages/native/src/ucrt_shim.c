@@ -1,4 +1,5 @@
 // UCRT-for-XP shim: api-ms-win-crt-stdio-l1-1-0.dll + api-ms-win-crt-runtime-l1-1-0.dll
+// (+ api-ms-win-crt-string-l1-1-0.dll for wcsrtombs, which XP's msvcrt lacks).
 // Implement the UCRT-internal functions on top of msvcrt.dll (present on XP).
 // Built with clang-cl for x86, msvcrt ABI (cdecl), no CRT. msvcrt functions
 // are resolved at runtime via GetProcAddress (XP's msvcrt exports the plain
@@ -79,9 +80,65 @@ int _close(int fd) {
     return fn ? fn(fd) : -1;
 }
 
-#endif // SHIM_STDIO
+#elif SHIM_STRING // api-ms-win-crt-string-l1-1-0.dll (wcsrtombs — XP msvcrt lacks it)
 
-#if !SHIM_STDIO // runtime-l1-1-0 (onexit/init tables)
+// Windows wchar_t is 16-bit; define it for the no-CRT build (stddef.h does
+// not reliably provide it under clang-cl /NODEFAULTLIB).
+#ifndef _WCHAR_T_DEFINED
+typedef unsigned short wchar_t;
+#define _WCHAR_T_DEFINED
+#endif
+
+// size_t wcsrtombs(char* dst, const wchar_t** src, size_t len, mbstate_t* ps)
+// Convert the wide string *src to multibyte into dst (at most len bytes).
+// wcstombs (present in XP's msvcrt) does the actual conversion; this wrapper
+// implements the wcsrtombs contract: on success updates *src past the wide
+// chars consumed (NULL if fully consumed) and returns the byte count; returns
+// (size_t)-1 on an invalid wide character (leaving *src at the bad char).
+typedef size_t(__cdecl* wcstombs_fn)(char*, const wchar_t*, size_t);
+static wcstombs_fn get_wcstombs(void) {
+    return (wcstombs_fn)get_msvcrt("wcstombs");
+}
+
+size_t wcsrtombs(char* dst, const wchar_t** src, size_t len, void* ps) {
+    (void)ps;
+    if (!src || !*src) return (size_t)-1;
+    wcstombs_fn wcstombs_fn_p = get_wcstombs();
+    if (!wcstombs_fn_p) return (size_t)-1;
+    const wchar_t* s = *src;
+
+    if (!dst) {
+        // Length query: wcstombs(NULL, ...) with a huge count computes the
+        // total length of the full conversion (no state, same output).
+        return wcstombs_fn_p(NULL, s, (size_t)-1);
+    }
+
+    size_t written = 0;
+    while (written < len) {
+        if (!*s) { *src = NULL; return written; }
+        char tmp[8];
+        size_t m = wcstombs_fn_p(tmp, s, sizeof(tmp));
+        if (m == (size_t)-1) { *src = s; return (size_t)-1; }
+        if (written + m > len) break;
+        // Count the wide chars that produced these m bytes (wcstombs consumed
+        // the minimal prefix that fit; walk char by char to find k).
+        size_t k = 0, acc = 0;
+        while (acc < m) {
+            size_t mm = wcstombs_fn_p(tmp, s + k, sizeof(tmp));
+            if (mm == (size_t)-1) { *src = s + k; return (size_t)-1; }
+            acc += mm;
+            k++;
+        }
+        size_t m2 = wcstombs_fn_p(dst + written, s, len - written);
+        if (m2 == (size_t)-1) { *src = s; return (size_t)-1; }
+        written += m2;
+        s += k;
+    }
+    *src = s;
+    return written;
+}
+
+#else // runtime-l1-1-0 (onexit/init tables)
 
 typedef void(__cdecl* _PVFV)(void);
 typedef int(__cdecl* _PIFV)(void);
@@ -157,4 +214,4 @@ int _initterm_e(_PIFV* first, _PIFV* last) {
     return 0;
 }
 
-#endif // runtime
+#endif // SHIM_STDIO / SHIM_STRING / runtime
