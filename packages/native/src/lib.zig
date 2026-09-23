@@ -3,6 +3,56 @@ const builtin = @import("builtin");
 const build_options = @import("build_options");
 const Allocator = std.mem.Allocator;
 
+fn peBaseOf(addr: usize) usize {
+    var p = addr & ~@as(usize, 0xFFF);
+    while (p > 0x10000) : (p -= 0x1000) {
+        const b: [*]const u8 = @ptrFromInt(p);
+        if (b[0] != 'M' or b[1] != 'Z') continue;
+        if (p + 0x40 > addr) continue;
+        const e_lfanew = std.mem.readInt(u32, b[0x3C..0x40][0..4], .little);
+        if (e_lfanew == 0 or e_lfanew > 0x400) continue;
+        if (p + e_lfanew + 4 > 0xFFFFFFFF) continue;
+        const nt: [*]const u8 = b + e_lfanew;
+        if (nt[0] == 'P' and nt[1] == 'E' and nt[2] == 0 and nt[3] == 0) return p;
+    }
+    return 0;
+}
+
+fn panicLogLine(line: []const u8) void {
+    // Best-effort file log: stderr may be redirected/locked during panic.
+    const path = "C:\\Users\\Karthik\\AppData\\Local\\Temp\\opencode_zig_panic.log";
+    const f = std.Io.Dir.createFileAbsolute(io, path, .{ .truncate = false }) catch return;
+    defer f.close(io);
+    const end = f.length(io) catch return;
+    f.writePositionalAll(io, line, end) catch return;
+    f.writePositionalAll(io, "\n", end + line.len) catch return;
+}
+
+fn panicLog(comptime fmt: []const u8, args: anytype) void {
+    var buf: [512]u8 = undefined;
+    const line = std.fmt.bufPrint(&buf, fmt, args) catch return;
+    panicLogLine(line);
+}
+
+pub const panic = std.debug.FullPanic(struct {
+    fn panic(msg: []const u8, ra: ?usize) noreturn {
+        const addr = ra orelse @returnAddress();
+        const base = peBaseOf(addr);
+        std.debug.print("ZIG_PANIC msg={s} ra=0x{x} base=0x{x} rva=0x{x}\n", .{ msg, addr, base, addr -| base });
+        panicLog("ZIG_PANIC msg={s} ra=0x{x} base=0x{x} rva=0x{x}", .{ msg, addr, base, addr -| base });
+        if (@errorReturnTrace()) |st| {
+            var i: usize = 0;
+            while (i < st.index and i < 16) : (i += 1) {
+                const a = st.instruction_addresses[i];
+                const b = peBaseOf(a);
+                std.debug.print("  frame[{d}] ra=0x{x} base=0x{x} rva=0x{x}\n", .{ i, a, b, a -| b });
+                panicLog("  frame[{d}] ra=0x{x} base=0x{x} rva=0x{x}", .{ i, a, b, a -| b });
+            }
+        }
+        std.process.exit(3);
+    }
+}.panic);
+
 pub const std_options: std.Options = .{
     .log_level = .debug,
     .logFn = handleStdLog,

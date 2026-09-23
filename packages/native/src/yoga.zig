@@ -233,13 +233,16 @@ fn freeContextRecursive(node: YGNodeRef) void {
     freeContext(node);
 }
 
+// i386: C++ Yoga reads YGSize from EDX:EAX, but Zig returns extern structs
+// via a hidden sret pointer (and shifts all args +4). Returning u64 forces
+// the register return: EAX = width bits, EDX = height bits.
 fn internalMeasureFunc(
     node: YGNodeConstRef,
     width: f32,
     width_mode: c.YGMeasureMode,
     height: f32,
     height_mode: c.YGMeasureMode,
-) callconv(.c) c.YGSize {
+) callconv(.c) u64 {
     // JS-measured nodes use the shared JS callback router. Native-backed
     // renderables use internalNativeMeasureFunc to avoid a JS round trip.
     tls_measure_width = std.math.nan(f32);
@@ -250,7 +253,7 @@ fn internalMeasureFunc(
         trampoline(@ptrCast(@constCast(node)), width, enumValue(width_mode), height, enumValue(height_mode));
     }
 
-    return .{ .width = tls_measure_width, .height = tls_measure_height };
+    return @bitCast(ExternalYogaSize{ .width = tls_measure_width, .height = tls_measure_height });
 }
 
 fn internalNativeMeasureFunc(
@@ -259,7 +262,7 @@ fn internalNativeMeasureFunc(
     width_mode: c.YGMeasureMode,
     height: f32,
     height_mode: c.YGMeasureMode,
-) callconv(.c) c.YGSize {
+) callconv(.c) u64 {
     // Hot native renderables measure entirely in Zig: Yoga -> native renderable
     // -> native text/editor view. This is separate from the JS callback path.
     if (getContext(node)) |ctx| {
@@ -271,11 +274,11 @@ fn internalNativeMeasureFunc(
                 height,
                 enumValue(height_mode),
             );
-            return .{ .width = size.width, .height = size.height };
+            return @bitCast(ExternalYogaSize{ .width = size.width, .height = size.height });
         }
     }
 
-    return .{ .width = std.math.nan(f32), .height = std.math.nan(f32) };
+    return @bitCast(ExternalYogaSize{ .width = std.math.nan(f32), .height = std.math.nan(f32) });
 }
 
 fn internalDirtiedFunc(node: YGNodeConstRef) callconv(.c) void {
@@ -599,7 +602,7 @@ pub export fn yogaSetDirtiedCallback(callback: ?*const anyopaque) void {
 
 pub export fn yogaNodeSetMeasureFunc(node: YGNodeRef, enabled: bool) void {
     if (enabled) {
-        c.YGNodeSetMeasureFunc(node, &internalMeasureFunc);
+        c.YGNodeSetMeasureFunc(node, @ptrCast(&internalMeasureFunc));
         return;
     }
 
@@ -611,7 +614,7 @@ pub fn yogaNodeSetNativeMeasureFunc(node: YGNodeRef, target: ?*anyopaque, callba
         const ctx = getOrCreateContext(node);
         ctx.native_measure_target = target;
         ctx.native_measure_callback = callback;
-        c.YGNodeSetMeasureFunc(node, &internalNativeMeasureFunc);
+        c.YGNodeSetMeasureFunc(node, @ptrCast(&internalNativeMeasureFunc));
         return;
     }
 

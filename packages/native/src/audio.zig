@@ -1915,7 +1915,7 @@ pub fn writeStream(
 
     stream.input_write = (stream.input_write + write_count) % stream.input_buffer.len;
     stream.input_count += write_count;
-    _ = @atomicRmw(u32, &stream.bytes_received, .Add, write_count, .monotonic);
+    _ = @atomicRmw(u32, &stream.bytes_received, .Add, @intCast(write_count), .monotonic);
     stream.input_condition.signal(io);
     return @intCast(write_count);
 }
