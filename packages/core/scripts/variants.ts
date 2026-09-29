@@ -13,4 +13,5 @@ export const variants: Variant[] = [
   { platform: "linux", arch: "arm64", abi: "musl" },
   { platform: "win32", arch: "x64" },
   { platform: "win32", arch: "arm64" },
+  { platform: "win32", arch: "x86" },
 ]
