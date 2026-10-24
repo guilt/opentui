@@ -44,6 +44,7 @@ const terminal_image_tests = @import("tests/terminal-image_test.zig");
 const kitty_transport_tests = @import("tests/kitty-transport_test.zig");
 const lib_tests = @import("lib.zig");
 const clipboard_tests = @import("clipboard/host.zig");
+const win9x_shim_tests = @import("tests/win9x-shim_test.zig");
 // const example_tests = @import("example_test.zig");
 
 // Re-export test declarations from individual test files
@@ -94,5 +95,6 @@ comptime {
     _ = kitty_transport_tests;
     _ = lib_tests;
     _ = clipboard_tests;
+    _ = win9x_shim_tests;
     // _ = example_tests;
 }

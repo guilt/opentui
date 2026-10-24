@@ -53,3 +53,6 @@ screenshot-*.png
 host_key
 host_key.pub
 *.host_key
+
+# Locally packed fork tarballs (consumed by OpenCode's file: overrides)
+dist-tarballs/

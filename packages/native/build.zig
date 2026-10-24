@@ -568,6 +568,19 @@ pub fn build(b: *std.Build) void {
         .optimize = .Debug,
     });
     applyDependencies(b, test_mod, .Debug, native_target, build_options);
+    // The XP shim (win9x_compat.c) is portable C; compiling it into the test
+    // binary on Windows lets the win9x-shim tests exercise the parking
+    // functions directly (see src/tests/win9x-shim_test.zig). It declares
+    // dllimport kernel32 symbols and the legacy msvcrt `_iob` table, so the
+    // test link needs those import libraries explicitly (the DLL build gets
+    // them via mingw defaults + lib/ucrt_msvcrt.lib instead).
+    if (native_target.result.os.tag == .windows) {
+        test_mod.addCSourceFile(.{
+            .file = b.path("src/win9x_compat.c"),
+            .flags = &.{"-DWIN9X_TEST_NO_MSVCRT_FORWARDERS"},
+        });
+        test_mod.linkSystemLibrary("kernel32", .{});
+    }
     const test_artifact = b.addTest(.{
         .root_module = test_mod,
         .filters = if (b.option([]const u8, "test-filter", "Skip tests that do not match filter")) |f| &.{f} else &.{},
